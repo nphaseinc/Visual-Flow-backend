@@ -56,4 +56,24 @@ public class CronWorkflowSpec implements Serializable {
             cronPipelineDto.isSuspend(),
             new WorkflowSpec().workflowTemplateRef(new WorkflowTemplateRef().name(workflowTemplateName)));
     }
+
+    /**
+     * Build CronWorkflowSpec with an inlined WorkflowSpec from the WorkflowTemplate.
+     * Prefer this over {@link #fromDtoAndWFTMPLName} so cron-triggered workflows do not
+     * depend on the controller having the WorkflowTemplate in its informer cache.
+     *
+     * @param cronPipelineDto cron schedule DTO
+     * @param workflowTemplate stored WorkflowTemplate for the pipeline
+     * @return CronWorkflowSpec ready to submit
+     */
+    public static CronWorkflowSpec fromDtoAndWorkflowTemplate(
+        @Valid CronPipelineDto cronPipelineDto, WorkflowTemplate workflowTemplate) {
+        return new CronWorkflowSpec(
+            cronPipelineDto.getSchedule(),
+            "Forbid",
+            1,
+            1,
+            cronPipelineDto.isSuspend(),
+            WorkflowSpec.fromWorkflowTemplateSpec(workflowTemplate.getSpec()));
+    }
 }

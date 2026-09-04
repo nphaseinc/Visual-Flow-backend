@@ -42,11 +42,32 @@ public class WorkflowSpec implements Serializable {
 
     private WorkflowTemplateRef workflowTemplateRef;
     private String entrypoint;
+    private String onExit;
     private List<ImagePullSecret> imagePullSecrets;
     private List<Template> templates;
     private String serviceAccountName;
     private boolean suspend;
     private String shutdown;
+
+    /**
+     * Build a WorkflowSpec by copying runnable fields from a WorkflowTemplateSpec.
+     * Avoids workflowTemplateRef lookups that can fail when the controller informer
+     * has not yet observed a newly created WorkflowTemplate.
+     *
+     * @param templateSpec source WorkflowTemplateSpec
+     * @return WorkflowSpec with inlined templates
+     */
+    public static WorkflowSpec fromWorkflowTemplateSpec(WorkflowTemplateSpec templateSpec) {
+        if (templateSpec == null) {
+            throw new IllegalArgumentException("WorkflowTemplateSpec must not be null");
+        }
+        return new WorkflowSpec()
+                .entrypoint(templateSpec.getEntrypoint())
+                .onExit(templateSpec.getOnExit())
+                .templates(templateSpec.getTemplates())
+                .serviceAccountName(templateSpec.getServiceAccountName())
+                .imagePullSecrets(templateSpec.getImagePullSecrets());
+    }
 
     /**
      * Setter for serviceAccountName.
@@ -78,6 +99,17 @@ public class WorkflowSpec implements Serializable {
      */
     public WorkflowSpec entrypoint(String entrypoint) {
         this.entrypoint = entrypoint;
+        return this;
+    }
+
+    /**
+     * Setter for onExit.
+     *
+     * @param onExit onExit template name
+     * @return this
+     */
+    public WorkflowSpec onExit(String onExit) {
+        this.onExit = onExit;
         return this;
     }
 

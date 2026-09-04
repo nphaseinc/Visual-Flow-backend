@@ -68,6 +68,7 @@ import org.joda.time.DateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -1295,8 +1296,14 @@ class PipelineServiceTest {
                 .name(Constants.DAG_TEMPLATE_NAME)
                 .dag(dagTemplate))));
         when(argoKubernetesService.getWorkflowTemplate(anyString(), anyString())).thenReturn(workflowTemplate);
+        ArgumentCaptor<Workflow> workflowCaptor = ArgumentCaptor.forClass(Workflow.class);
         pipelineService.run("projectId", "id");
-        verify(argoKubernetesService).createOrReplaceWorkflow(eq("projectId"), any(Workflow.class));
+        verify(argoKubernetesService).createOrReplaceWorkflow(eq("projectId"), workflowCaptor.capture());
+        WorkflowSpec submittedSpec = workflowCaptor.getValue().getSpec();
+        assertNull(submittedSpec.getWorkflowTemplateRef(),
+                "run must inline WFT spec; workflowTemplateRef races with controller informer");
+        assertNotNull(submittedSpec.getTemplates(), "inlined templates must be present");
+        assertEquals(1, submittedSpec.getTemplates().size(), "DAG template must be inlined");
     }
 
     @Test
@@ -1479,11 +1486,23 @@ class PipelineServiceTest {
     @Test
     void testCreateCron() {
         CronPipelineDto cronPipelineDto = new CronPipelineDto();
+        WorkflowTemplate workflowTemplate = new WorkflowTemplate();
+        workflowTemplate.setSpec(new WorkflowTemplateSpec()
+                .entrypoint("dagTemplate")
+                .onExit("exit-handler")
+                .templates(List.of(new Template().name(Constants.DAG_TEMPLATE_NAME))));
+        when(argoKubernetesService.getWorkflowTemplate("projectId", "id")).thenReturn(workflowTemplate);
         doNothing()
                 .when(argoKubernetesService)
                 .createOrReplaceCronWorkflow(eq("projectId"), any(CronWorkflow.class));
+        ArgumentCaptor<CronWorkflow> cronCaptor = ArgumentCaptor.forClass(CronWorkflow.class);
         pipelineService.createCron("projectId", "id", cronPipelineDto);
-        verify(argoKubernetesService).createOrReplaceCronWorkflow(eq("projectId"), any(CronWorkflow.class));
+        verify(argoKubernetesService).createOrReplaceCronWorkflow(eq("projectId"), cronCaptor.capture());
+        WorkflowSpec workflowSpec = cronCaptor.getValue().getSpec().getWorkflowSpec();
+        assertNull(workflowSpec.getWorkflowTemplateRef(),
+                "cron must inline WFT spec; workflowTemplateRef races with controller informer");
+        assertEquals("dagTemplate", workflowSpec.getEntrypoint());
+        assertEquals("exit-handler", workflowSpec.getOnExit());
     }
 
     @Test
@@ -1509,11 +1528,16 @@ class PipelineServiceTest {
         CronPipelineDto cronPipelineDto = new CronPipelineDto();
         CronWorkflow cronWorkflow = new CronWorkflow();
         cronWorkflow.setSpec(new CronWorkflowSpec());
+        WorkflowTemplate workflowTemplate = new WorkflowTemplate();
+        workflowTemplate.setSpec(new WorkflowTemplateSpec()
+                .entrypoint("dagTemplate")
+                .templates(List.of(new Template().name(Constants.DAG_TEMPLATE_NAME))));
 
         doNothing()
                 .when(argoKubernetesService)
                 .createOrReplaceCronWorkflow(eq("projectId"), any(CronWorkflow.class));
         when(argoKubernetesService.getCronWorkflow("projectId", "id")).thenReturn(cronWorkflow);
+        when(argoKubernetesService.getWorkflowTemplate("projectId", "id")).thenReturn(workflowTemplate);
         pipelineService.updateCron("projectId", "id", cronPipelineDto);
         verify(argoKubernetesService).createOrReplaceCronWorkflow(eq("projectId"), any(CronWorkflow.class));
 

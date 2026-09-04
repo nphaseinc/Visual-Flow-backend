@@ -65,7 +65,6 @@ import by.iba.vfapi.model.argo.Workflow;
 import by.iba.vfapi.model.argo.WorkflowSpec;
 import by.iba.vfapi.model.argo.WorkflowStatus;
 import by.iba.vfapi.model.argo.WorkflowTemplate;
-import by.iba.vfapi.model.argo.WorkflowTemplateRef;
 import by.iba.vfapi.model.argo.WorkflowTemplateSpec;
 import by.iba.vfapi.model.auth.UserInfo;
 import by.iba.vfapi.model.history.AbstractHistory;
@@ -1619,7 +1618,10 @@ public class PipelineService {
                 .addToLabels(Constants.PIPELINE_NAME_LABEL, workflowTemplate.getMetadata().getLabels().get("name"))
                 .build()
         );
-        workflow.setSpec(new WorkflowSpec().workflowTemplateRef(new WorkflowTemplateRef().name(id)));
+        // Inline the WorkflowTemplateSpec instead of workflowTemplateRef. Argo Workflows
+        // resolves refs from the controller informer; a newly created WFT (or cold cache
+        // after controller restart) can yield permanent Error: WorkflowTemplate not found.
+        workflow.setSpec(WorkflowSpec.fromWorkflowTemplateSpec(workflowTemplate.getSpec()));
         workflowService.trackWorkflowEvents(projectId, id);
         argoKubernetesService.createOrReplaceWorkflow(projectId, workflow);
     }
@@ -1666,9 +1668,10 @@ public class PipelineService {
      * @param cronPipelineDto cron data
      */
     public void createCron(String projectId, String id, @Valid CronPipelineDto cronPipelineDto) {
+        WorkflowTemplate workflowTemplate = argoKubernetesService.getWorkflowTemplate(projectId, id);
         CronWorkflow cronWorkflow = new CronWorkflow();
         cronWorkflow.setMetadata(new ObjectMetaBuilder().withName(id).build());
-        cronWorkflow.setSpec(CronWorkflowSpec.fromDtoAndWFTMPLName(cronPipelineDto, id));
+        cronWorkflow.setSpec(CronWorkflowSpec.fromDtoAndWorkflowTemplate(cronPipelineDto, workflowTemplate));
         workflowService.trackWorkflowEvents(projectId, id);
         argoKubernetesService.createOrReplaceCronWorkflow(projectId, cronWorkflow);
     }
@@ -1782,7 +1785,8 @@ public class PipelineService {
             LOGGER.warn("Cannot find cron workflow for {} pipeline", id);
             throw new BadRequestException(String.format("Cron with id %s doesn't exist", id), e);
         }
-        cronWorkflow.setSpec(CronWorkflowSpec.fromDtoAndWFTMPLName(cronPipelineDto, id));
+        WorkflowTemplate workflowTemplate = argoKubernetesService.getWorkflowTemplate(projectId, id);
+        cronWorkflow.setSpec(CronWorkflowSpec.fromDtoAndWorkflowTemplate(cronPipelineDto, workflowTemplate));
         argoKubernetesService.createOrReplaceCronWorkflow(projectId, cronWorkflow);
     }
 
